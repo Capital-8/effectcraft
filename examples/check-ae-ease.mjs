@@ -5,8 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const cli = process.argv[2];
-if (!cli || !fs.existsSync(cli)) throw new Error('Usage: node examples/check-ae-ease.mjs <aesync/server/dist/cli.js>');
+const cliArg = process.argv[2];
+if (!cliArg) throw new Error('Usage: node examples/check-ae-ease.mjs <aesync/server/dist/cli.js>');
+const cli = path.resolve(cliArg);
+if (!fs.existsSync(cli) || !fs.statSync(cli).isFile() || !cli.endsWith('.js')) throw new Error('Expected an existing .js CLI file: ' + cliArg);
 const tolerance = 1e-7;
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: root, windowsHide: true, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
