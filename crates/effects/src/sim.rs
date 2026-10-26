@@ -186,7 +186,7 @@ pub enum Tint {
 /// How a sprite layer meets the original layer.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Post {
-    /// [`combine`] with this mode (0 Composite … 5 sprites only).
+    /// `combine` with this mode (0 Composite … 5 sprites only).
     Combine(u32),
     /// The sprites alone.
     Replace,

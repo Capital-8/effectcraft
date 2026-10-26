@@ -359,7 +359,7 @@ pub(crate) fn selection_names(sel: &str) -> Vec<String> {
     out
 }
 
-/// Parse a selection: comma-separated names (optionally quoted, see [`selection_names`]) or
+/// Parse a selection: comma-separated names (optionally quoted, see `selection_names`) or
 /// `<hex>` hashes / wildcards.
 pub fn selection_hashes(sel: &str, manifest: Option<&[(String, u32)]>) -> Vec<u32> {
     let mut out = vec![];

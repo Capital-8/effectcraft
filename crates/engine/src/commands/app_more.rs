@@ -354,7 +354,7 @@ fn assign_view_shortcut(s: &mut Session, p: &Value) -> Result<Value> {
     reassign(s, view_command(cur), &slot, "view.assign3dShortcut")
 }
 
-/// Window ▸ Assign Shortcut to "<workspace>" Workspace: Shift+F10, Shift+F11 or Shift+F12.
+/// Window ▸ Assign Shortcut to `"<workspace>"` Workspace: Shift+F10, Shift+F11 or Shift+F12.
 /// The frontend fills in the current workspace.
 fn assign_workspace_shortcut(s: &mut Session, p: &Value) -> Result<Value> {
     let slot = slot_p(p, "window.assignWorkspaceShortcut", true)?;
@@ -668,6 +668,9 @@ fn extract_cubemap(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(r)
 }
 
+/// The specs for the commands in this module: history steps, recent footage and presets, Save
+/// a Copy As XML, footage replacement and Execute File, 3D-view and workspace shortcuts,
+/// logging and the system report, VR environment/cubemap creation and System Information.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!("edit.history", "History", [], None, "{steps?: n (undo n steps), redo?: n}", has_history, history),

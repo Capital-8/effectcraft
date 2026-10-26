@@ -579,7 +579,7 @@ pub struct UiState {
     pub maximized: Option<PanelKind>,
     /// Floating windows of [`Self::dock`] whose native rect holds the OS window's outer
     /// position, from a workspace file of an earlier version (see
-    /// [`crate::dock_ui::native_outer_to_content`]). Workspaces are not saved while any remain.
+    /// `crate::dock_ui::native_outer_to_content`). Workspaces are not saved while any remain.
     #[serde(skip)]
     pub native_outer: Vec<u64>,
     /// Locked Composition / Timeline tabs (panel ids): opening another composition does not

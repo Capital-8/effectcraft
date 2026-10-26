@@ -52,9 +52,29 @@ pub(crate) fn gpu() -> Option<&'static Gpu> {
     static G: OnceLock<Result<Gpu, String>> = OnceLock::new();
     hold_gpu_lock();
     let g = G.get_or_init(|| {
+        // Readback mapping/allocation errors become None without necessarily retiring the
+        // context. Preserve their original messages alongside the failure's health snapshot.
+        struct GpuTestLog;
+        impl log::Log for GpuTestLog {
+            fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+                metadata.level() <= log::Level::Warn && metadata.target().starts_with("effectcraft_gpu")
+            }
+
+            fn log(&self, record: &log::Record<'_>) {
+                if self.enabled(record.metadata()) {
+                    eprintln!("{} {}: {}", record.level(), record.target(), record.args());
+                }
+            }
+
+            fn flush(&self) {}
+        }
+        static LOGGER: GpuTestLog = GpuTestLog;
+        if log::set_logger(&LOGGER).is_ok() {
+            log::set_max_level(log::LevelFilter::Warn);
+        }
         let g = Gpu::try_headless();
         match &g {
-            Ok(g) => eprintln!("effectcraft-gpu tests: adapter {}", g.ctx.name),
+            Ok(g) => eprintln!("effectcraft-gpu tests: adapter {}, median {:?}", g.ctx.name, g.ctx.median_kernel),
             Err(e) => eprintln!("effectcraft-gpu tests: no GPU ({e}), skipping GPU comparisons"),
         }
         g
@@ -481,7 +501,16 @@ pub(crate) fn effect_direct(id: &str, vals: &[(&str, Value)], adjustment: bool) 
         let buf = effectcraft_effects::Buf { img, offset: [0.0, 0.0], scale };
         let ctx = || effectcraft_effects::EffectCtx { params: &params, time: 0.25, layer_size: size, seed: 11, adjustment, env: Default::default() };
         let cpu = (spec.render)(&ctx(), buf.clone());
-        let out = effectcraft_render::Accelerator::effects(g, &[effectcraft_render::FxStep { spec, ctx: ctx() }], &buf, None).expect("the GPU runs the effect");
+        let started = std::time::Instant::now();
+        let out = effectcraft_render::Accelerator::effects(g, &[effectcraft_render::FxStep { spec, ctx: ctx() }], &buf, None).unwrap_or_else(|| {
+            panic!(
+                "the GPU runs {id} {vals:?} adj {adjustment} scale {scale}; elapsed={:?}, health={:?}, unavailable={:?}, transfers={:?}",
+                started.elapsed(),
+                g.ctx.check_health(),
+                g.ctx.unavailable_kernels(),
+                g.ctx.transfer_stats()
+            )
+        });
         if expect_empty {
             assert!(out.img.data.iter().all(|p| p[3] == 0.0), "{id} {vals:?} adj {adjustment} scale {scale}: Cut Away 100 produced non-zero alpha");
         }

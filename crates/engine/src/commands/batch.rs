@@ -51,6 +51,17 @@ fn substitute(v: &Value, results: &[Value]) -> Result<Value> {
     })
 }
 
+/// `engine.batch`: runs `steps` (`[{command|id, params?}]`) as engine commands, substituting
+/// `$N` / `$N.key.0` strings in each step's params with earlier results, and returns
+/// `{steps, results}`.
+///
+/// `engine.batch`, `file.runScript` and `script.run` are refused inside a batch. Successful
+/// steps are folded into one undo step named `label` (default "Batch"). With the default
+/// `atomic: true`, a failing step restores the project, history and editor state, drops the
+/// events the batch published, sanitizes the editor against the failing intermediate state (so
+/// no pre-batch IME token is revived) and keeps the higher process IME revision; with
+/// `atomic: false` the steps before the failure stay applied. Either way the error names the
+/// failing step and command.
 fn batch(s: &mut Session, p: &Value) -> Result<Value> {
     let steps = p.get("steps").and_then(Value::as_array).ok_or_else(|| bad("engine.batch", "missing `steps`: [{command, params?}, …]"))?.clone();
     let label = str_p(p, "label").unwrap_or("Batch").to_string();
@@ -137,6 +148,32 @@ mod tests {
     use serde_json::json;
 
     use crate::Session;
+
+    /// Failed atomic steps discard their UI events while preserving events queued beforehand.
+    #[test]
+    fn atomic_batch_event_rollback_preserves_prior_events() {
+        for atomic in [true, false] {
+            let mut s = Session::default();
+            s.execute("comp.new", json!({"name": "First", "width": 100, "height": 100})).unwrap();
+            let first = s.active_comp_id().unwrap();
+            s.execute("comp.new", json!({"name": "Second", "width": 100, "height": 100})).unwrap();
+            let second = s.active_comp_id().unwrap();
+            s.drain_events();
+            s.execute("comp.open", json!({"comp": first.0})).unwrap();
+            let result = s.execute_checked(
+                "engine.batch",
+                json!({"atomic": atomic, "steps": [
+                    {"command": "comp.open", "params": {"comp": second.0}},
+                    {"command": "no.suchCommand", "params": {}}
+                ]}),
+            );
+            assert!(result.is_err());
+            assert_eq!(s.active_comp_id(), Some(if atomic { first } else { second }));
+            let opened: Vec<_> =
+                s.drain_events().into_iter().filter_map(|event| if let crate::Event::OpenComp(id) = event { Some(id) } else { None }).collect();
+            assert_eq!(opened, if atomic { vec![first] } else { vec![first, second] });
+        }
+    }
 
     #[test]
     fn batch_refs_one_undo_step_and_rollback() {

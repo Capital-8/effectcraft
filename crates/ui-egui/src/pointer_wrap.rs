@@ -12,6 +12,7 @@ struct State {
     disabled: bool,
 }
 
+/// The temp-data id of the [`State`] that tracks a numeric scrub across monitor edges.
 fn state_id() -> Id {
     Id::unique("numeric-pointer-wrap")
 }

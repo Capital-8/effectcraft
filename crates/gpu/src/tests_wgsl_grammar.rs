@@ -81,20 +81,26 @@ fn drop_template_lists_once(out: &str) -> (String, bool) {
 
 /// If `c[i]` opens a template argument list after an identifier, the index just past its `>`.
 fn template_list_end(c: &[char], i: usize) -> Option<usize> {
-    if c[i] != '<' || i == 0 || !(c[i - 1].is_alphanumeric() || c[i - 1] == '_') {
+    let prev = i.checked_sub(1).and_then(|p| c.get(p))?;
+    if c.get(i) != Some(&'<') || !(prev.is_alphanumeric() || *prev == '_') {
         return None;
     }
     let mut j = i + 1;
-    while j < c.len() && (c[j].is_alphanumeric() || c[j] == '_' || c[j] == ',' || c[j] == ' ') {
+    while let Some(&ch) = c.get(j) {
+        if !(ch.is_alphanumeric() || ch == '_' || ch == ',' || ch == ' ') {
+            break;
+        }
         j += 1;
     }
-    (j < c.len() && c[j] == '>').then_some(j + 1)
+    (c.get(j) == Some(&'>')).then_some(j + 1)
 }
 
 /// Scans the token starting at `*at` (not whitespace) and advances `*at` past it.
 fn next_token<'a>(s: &'a str, at: &mut usize) -> Tok<'a> {
     let b = s.as_bytes();
-    let ch = b[*at];
+    let Some(&ch) = b.get(*at) else {
+        return Tok::Sep;
+    };
     let mut i = *at;
     let tok = if ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'.' {
         // Identifier, member access or number (`1e-6`, `0x9E3779B9u`).
@@ -176,10 +182,11 @@ fn violations(src: &str) -> Vec<(usize, String)> {
         let tok = next_token(&s, &mut i);
         match tok {
             Tok::Open => levels.push(vec![]),
-            Tok::Close if levels.len() > 1 => {
-                levels.pop();
+            Tok::Close => {
+                if levels.len() > 1 {
+                    levels.pop();
+                }
             }
-            Tok::Close => {}
             Tok::Sep => {
                 if let Some(l) = levels.last_mut() {
                     l.clear();

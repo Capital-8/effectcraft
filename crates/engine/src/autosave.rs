@@ -143,7 +143,7 @@ pub fn write(prefs: &Prefs, project: Option<&str>, fallback: Option<&Path>, last
     write_in(&StdFiles, prefs, project, fallback, last_slot, json)
 }
 
-/// [`write`] through `fs`.
+/// [`write()`] through `fs`.
 pub fn write_in(
     fs: &dyn FileOps,
     prefs: &Prefs,

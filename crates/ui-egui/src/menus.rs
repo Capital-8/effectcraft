@@ -1552,7 +1552,7 @@ pub(crate) fn panel_shown(app: &EffectcraftApp, p: PanelKind) -> bool {
     }
 }
 
-/// The command a menu entry runs when chosen from a menu: Window ▸ <panel> closes a panel whose
+/// The command a menu entry runs when chosen from a menu: Window ▸ `<panel>` closes a panel whose
 /// entry is checked, as in After Effects (#1630). Shortcuts and agents calling `window.panel`
 /// still only show the panel.
 pub(crate) fn menu_choice(app: &EffectcraftApp, id: String, params: Value) -> (String, Value) {
@@ -1795,6 +1795,8 @@ fn system_paste_id() -> egui::Id {
     egui::Id::unique("menus-system-paste")
 }
 
+/// The temp-data id of the flag set by a plain Space press and taken on its release, so a tap
+/// runs the Space shortcut while holding Space stays the Hand tool.
 fn space_tap_id() -> egui::Id {
     egui::Id::unique("spacebar-tap")
 }

@@ -9,7 +9,7 @@
 //!   added, changed or removed; arrays element-wise when their length is unchanged, else
 //!   replaced). Lossless (unlike JSON Merge Patch, `null` values survive).
 //! - [`Mirror`] (page side): what the worker holds; turns the next project revision into a
-//!   [`FrameMsg::Sync`] (a full project the first time, a diff afterwards).
+//!   [`FrameMsg::Project`] the first time and [`FrameMsg::Patch`] for subsequent diffs.
 //! - [`FrameServer`] (worker side): applies syncs, relayed Roto Brush segmentations and render
 //!   requests, and renders frames as premultiplied RGBA8 ([`rgba8_premultiplied`]).
 //!
@@ -301,7 +301,7 @@ impl FrameServer {
     }
 
     /// Identity of virtual footage files, used when native metadata cannot describe the path.
-    /// Called from [`FrameServer::load`], not from the UI thread's cache lookup.
+    /// Called from `FrameServer::load`, not from the UI thread's cache lookup.
     pub fn set_virtual_id(&mut self, id: Option<Arc<dyn Fn(&str) -> Option<(u64, u64)> + Send + Sync>>) {
         self.virtual_id = id;
     }

@@ -564,6 +564,10 @@ pub type ScriptRunner = fn(&mut Session, &ScriptRequest) -> Value;
 pub type PluginLoader = fn(&[u8], &str) -> std::result::Result<Value, String>;
 
 impl Default for Session {
+    /// A new unsaved session: a default project that is both current and saved, no path, no
+    /// active jobs, the plain `FsServices`/`NoFootage` defaults, default preferences and keymaps,
+    /// empty history, events and journal, and a fresh process-wide IME stamp (`u64::MAX` when the
+    /// allocator is exhausted).
     fn default() -> Self {
         let project = Arc::new(Project::default());
         Session {
@@ -692,6 +696,8 @@ impl Session {
         self.script_calls.0 > 0
     }
 
+    /// Whether `id` names a known command whose `enabled` predicate returns `Ok` for this session;
+    /// an unknown id or a predicate error reads as disabled.
     pub fn is_enabled(&self, id: &str) -> bool {
         commands::find(id).is_some_and(|c| (c.enabled)(self).is_ok())
     }
@@ -715,6 +721,15 @@ impl Session {
         self.edit_inner(label, merge, f)
     }
 
+    /// The shared body of [`Session::edit`] and [`Session::edit_text_doc`].
+    ///
+    /// Runs `f` on a clone of the project and editor state, then synchronizes derived data (global
+    /// light and Essential Graphics), queues invalidated Warp Stabilizer/camera-tracker work and
+    /// Roto Brush instances needing re-propagation in the `*_pending` lists. If the clone has the same
+    /// content the project and history are left as they were (only editor-state changes from `f`
+    /// are kept) and no revision is bumped; otherwise the previous project is recorded as an
+    /// undo step under `label`, unless it merges with the current merge key (then the redo branch
+    /// is dropped). An `Err` from `f` propagates with the session unchanged.
     fn edit_inner<T>(&mut self, label: &str, merge: Option<&str>, f: impl FnOnce(&mut Project, &mut EditorState) -> Result<T>) -> Result<T> {
         let before = self.project.clone();
         let mut p = (*self.project).clone();
@@ -845,6 +860,10 @@ impl Session {
         }
     }
 
+    /// Undoes one step: the current project goes onto the redo stack, per-comp Resolution is kept
+    /// as it was, the merge key is cleared, selections are sanitized for the replaced state (the
+    /// on-canvas editor gets a new IME epoch only when its own document changed) and the session is
+    /// bumped. Returns `false`, changing nothing, when there is nothing to undo.
     pub fn undo(&mut self) -> bool {
         let Some((label, p)) = self.history.undo.pop() else { return false };
         let edited = commands::text_edit::active_editor_snapshot(self);
@@ -857,6 +876,10 @@ impl Session {
         true
     }
 
+    /// Redoes one step: the current project goes back onto the undo stack, per-comp Resolution is
+    /// kept, the merge key is cleared, selections are sanitized for the replaced state (a changed
+    /// text document starts a new IME epoch) and the session is bumped. Returns `false`, changing
+    /// nothing, when there is nothing to redo.
     pub fn redo(&mut self) -> bool {
         let Some((label, p)) = self.history.redo.pop() else { return false };
         let edited = commands::text_edit::active_editor_snapshot(self);
@@ -996,6 +1019,10 @@ impl Session {
         commands::text_edit::after_external_change(self, edited.as_ref());
     }
 
+    /// Sets the time of every comp related to `comp` through precomp layers: down into the comps
+    /// it nests (through each layer's timing) and up into the comps nesting it. A seen-set keeps
+    /// cycles and diamonds finite; each found time is clamped to its comp's last frame, snapped to
+    /// the nearest frame and stored in `state.times`. The caller owns the text-editor boundary.
     fn sync_related_times_inner(&mut self, comp: ItemId, t: Tick) {
         let mut seen = std::collections::BTreeSet::from([comp]);
         let mut todo = vec![(comp, t)];

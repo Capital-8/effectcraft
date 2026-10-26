@@ -1055,7 +1055,7 @@ pub enum ColorOp {
     /// Negative channels to 0 (the saturation intent).
     Max0,
     /// A LUT (0 nearest, 1 trilinear, 2 tetrahedral) with an optional per-channel shaper, forward
-    /// or inverse (as [`FileXform::apply`]).
+    /// or inverse (as `FileXform::apply`).
     Lut { lut: Arc<Lut>, shaper: Option<Arc<[Vec<(f32, f32)>; 3]>>, interp: u32, inverse: bool },
     /// `m × (c + pre) + post` (a custom config's MatrixTransform and RangeTransform).
     Affine { m: [[f32; 3]; 3], pre: [f32; 3], post: [f32; 3] },
@@ -1322,7 +1322,7 @@ fn curve3(xs: [f64; 3], ys: [f64; 3], v: f64) -> f64 {
 }
 
 /// Color Stabilizer's correction of buffer `b` as one piecewise-linear map per channel (points
-/// with increasing x; the end segments extend), the same maps [`color_stabilizer`] applies.
+/// with increasing x; the end segments extend), the same maps `color_stabilizer` applies.
 /// `None` without a host or reference frame (the layer passes through). (The GPU effect.)
 pub fn color_stabilizer_maps(ctx: &EffectCtx, b: &Buf) -> Option<[Vec<(f64, f64)>; 3]> {
     let reference = ctx.env.host?.self_at(ctx.params.f("referenceFrame"), ctx.env.effect_index)?;

@@ -14,6 +14,8 @@ use serde_json::{Value, json};
 /// never reuses a live IME context). Exhaustion wraps; it cannot panic.
 static NEXT_EDIT_SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+/// Takes the next session token: returns the counter's current value and increments it, so
+/// successive tokens differ until the process-wide `u64` counter wraps.
 pub(super) fn next_edit_session() -> u64 {
     NEXT_EDIT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
@@ -27,10 +29,14 @@ pub(super) fn next_edit_session() -> u64 {
 /// receipt rather than claiming a mutation with a reused revision.
 static NEXT_IME_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Allocates a fresh process-wide IME revision, or `None` once the counter has nowhere left
+/// to advance; callers keep their existing stamp rather than reuse one.
 pub(crate) fn next_ime_revision() -> Option<u64> {
     allocate_ime_revision(&NEXT_IME_REVISION)
 }
 
+/// Takes the next value of `counter` with a compare-exchange loop: `Some(current + 1)` after
+/// storing it, or `None` without storing when the counter is already `u64::MAX`.
 fn allocate_ime_revision(counter: &std::sync::atomic::AtomicU64) -> Option<u64> {
     use std::sync::atomic::Ordering::Relaxed;
     let mut current = counter.load(Relaxed);
@@ -85,6 +91,8 @@ pub struct TextEdit {
 }
 
 impl Default for TextEdit {
+    /// An empty, uncreated editing session on layer `0` with no selection, pending style or goal
+    /// column, and a fresh process-wide session token.
     fn default() -> Self {
         Self { layer: LayerId(0), anchor: 0, caret: 0, pending: None, created: false, goal_x: None, session: next_edit_session() }
     }
@@ -909,6 +917,8 @@ fn editing(s: &Session) -> std::result::Result<(), String> {
     if s.state.text_edit.is_some() { Ok(()) } else { Err("not editing text".into()) }
 }
 
+/// The command specs of this module: the `text.*` editing, selection and caret commands and
+/// the two `edit.pasteText*` commands, each with its parameter shape and enablement predicate.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!(

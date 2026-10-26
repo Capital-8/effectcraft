@@ -37,6 +37,7 @@ impl ViewerMap {
     }
 }
 
+/// The `egui::Id` under which the last pass's `ViewerMap` is published.
 fn map_id() -> egui::Id {
     egui::Id::unique("viewer-map")
 }
@@ -769,6 +770,13 @@ pub(crate) fn checker(p: &egui::Painter, r: Rect) {
     }
 }
 
+/// Draw the Composition viewer in `rect` and handle its input for one pass.
+/// Publishes the fit magnification and `ViewerMap`, requests and draws the frame, then paints the nav breadcrumbs,
+/// view layout, guides/grid, layer boxes, handles, anchors, 3D gizmos, motion paths, masks, puppet pins and tracker
+/// overlays and records their automation regions. Pointer and drop gestures run engine commands
+/// (move/scale/rotate/anchor/camera/shape/mask/guide edits, picks, marquees); failures worth showing go to
+/// `app.ui.status`, while per-frame drag updates ignore errors so a gesture is not aborted mid-drag. With no active
+/// composition it draws `empty_state` and returns.
 pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let t = app.tokens;
     let ctx = ui.ctx().clone();
@@ -2269,6 +2277,10 @@ fn pen_cursor(ctx: &egui::Context, at: Pos2, icon: crate::icons::Icon) {
     crate::icons::paint(&painter, rect, icon, Color32::WHITE);
 }
 
+/// Handle a Pen-tool press at `pos`: close the current path when its first vertex is hit; otherwise append a snapped
+/// (Shift: 45-degree) vertex, resume an open path's end, add a motion-path keyframe, insert a vertex on a visible
+/// path segment, or start a new mask/shape path on the selected layer or a new shape layer. Records the resulting
+/// path id and tangent gesture in context data for the drag that follows.
 #[allow(clippy::too_many_arguments)]
 fn pen_press(
     app: &mut EffectcraftApp,
@@ -2600,6 +2612,8 @@ fn create_shape(app: &mut EffectcraftApp, tool: Tool, a: [f64; 2], b: [f64; 2], 
     }
 }
 
+/// Draw the no-composition viewer with New Composition and New Composition From Footage buttons, accepting Project
+/// items dropped on it to create the first composition.
 fn empty_state(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let t = app.tokens;
     let p = ui.painter().clone();

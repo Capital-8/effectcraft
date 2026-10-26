@@ -160,7 +160,7 @@ fn clipped_items(ids: &mut Ids, s: &effectcraft_svg::Shape, m: Affine, clips: &[
 /// Blend Mode). Top of the paint order first.
 ///
 /// Clipping groups (PDF / Illustrator clipping masks): shapes inside them are intersected with
-/// the clip paths through Merge Paths ▸ Intersect (see [`clipped_items`]). Clips enclosing the
+/// the clip paths through Merge Paths ▸ Intersect (see `clipped_items`). Clips enclosing the
 /// whole document are layer masks instead ([`vector_clip_masks`], used by
 /// [`shapes_from_vector`]). Images are skipped (Layer ▸ Create makes them footage layers, see
 /// [`split_at_images`]); soft masks are not converted.

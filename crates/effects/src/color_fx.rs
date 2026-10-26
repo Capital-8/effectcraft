@@ -25,7 +25,7 @@ pub(crate) fn luma_601(c: [f32; 3]) -> f32 {
     LUMA_601[0] * c[0] + LUMA_601[1] * c[1] + LUMA_601[2] * c[2]
 }
 
-/// The Rec. 601 luma weights of [`luma_601`]. The WGSL kernels repeat them as literals; the GPU
+/// The Rec. 601 luma weights of `luma_601`. The WGSL kernels repeat them as literals; the GPU
 /// test `shader_constants_match_the_cpu` checks that they are these.
 pub const LUMA_601: [f32; 3] = [0.299, 0.587, 0.114];
 
@@ -384,7 +384,7 @@ pub fn mirror_pow(v: f32, p: f32) -> f32 {
 /// back toward the gray). After Effects 2026 with Tint Color [1, 0.5, 0]: gray 0.1 (a red solid
 /// at Reds 10, case 717) → (43, 21, 0), gray 0.6 (yellow at defaults, case 825) → (255, 129, 2),
 /// white → white; the old hue / saturation / lightness mix gave (51, 26, 0) for the first.
-/// The luminosity weights of [`bw_tint`] (a Color blend's). `fx_color.wgsl` repeats them; the GPU
+/// The luminosity weights of `bw_tint` (a Color blend's). `fx_color.wgsl` repeats them; the GPU
 /// test `shader_constants_match_the_cpu` checks that they are these.
 pub const BW_TINT_LUMA: [f32; 3] = [0.3, 0.59, 0.11];
 
@@ -755,7 +755,7 @@ impl ColoramaPalette {
         }
     }
 
-    /// Parse "pos:r,g,b[,a] pos:r,g,b …" (positions 0..1, channels 0..1). `None` without stops.
+    /// Parse "pos:r,g,b\[,a\] pos:r,g,b …" (positions 0..1, channels 0..1). `None` without stops.
     pub fn parse(s: &str) -> Option<ColoramaPalette> {
         let mut stops: Vec<(f32, [f32; 4])> = s
             .split_whitespace()

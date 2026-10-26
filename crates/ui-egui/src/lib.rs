@@ -111,6 +111,7 @@ impl AppClock {
 }
 
 impl Default for AppClock {
+    /// The real monotonic clock (`Self::real()`).
     fn default() -> Self {
         Self::real()
     }
@@ -559,6 +560,10 @@ struct PlaybackPass<'a> {
 }
 
 impl EffectcraftApp {
+    /// Build the app around `session`.
+    /// Loads and applies the workspaces saved in the session's config directory (a failed load is reported in
+    /// `ui.status`), initializes the default UI, playback and render state, and registers the frontend's commands as
+    /// shortcutable `UiCommand`s on the session.
     pub fn new(session: Session) -> Self {
         let mut ui = UiState::default();
         let workspace_store = workspace_state::WorkspaceStore::load(session.config.as_deref(), &mut ui);
@@ -857,7 +862,7 @@ impl EffectcraftApp {
     }
 
     /// Show panel `p` (opening it in its usual place if it is closed), bring it to the front and
-    /// give it the focus: Window ▸ <panel>.
+    /// give it the focus: Window ▸ `<panel>`.
     pub fn show_panel(&mut self, p: PanelKind) {
         if !self.ui.dock.is_floating(p) && self.ui.maximized.is_some_and(|m| m != p) {
             self.ui.maximized = None;
@@ -1599,6 +1604,8 @@ impl EffectcraftApp {
         }
     }
 
+    /// Advance the audio or scrub output and feed its latest peaks to the level meter; an idle scrub is closed after
+    /// one second. With no source but an active meter, drive the meter to silence and request a repaint.
     fn pump_meters(&mut self, ctx: &egui::Context, now: f64) {
         if let Some(a) = &mut self.audio {
             a.pump();
@@ -1823,6 +1830,10 @@ impl EffectcraftApp {
         ctx.request_repaint();
     }
 
+    /// Handle the control channel for this tick: drain queued requests plus previously deferred ones, run each
+    /// through `control::handle`, answer `Done` immediately, retry `Retry` until its three-second deadline, hold
+    /// input/job/screenshot replies until their event happens and finish job waiters. Retry timeouts and refused
+    /// screenshots are answered as `{"ok": false, "error": ...}`; the receiver is kept for the next tick.
     fn drain_control(&mut self, ctx: &egui::Context, now: f64) {
         let Some(rx) = self.control_rx.take() else { return };
         let mut reqs: Vec<(ControlRequest, f64)> = std::mem::take(&mut self.deferred);
@@ -2178,6 +2189,8 @@ impl EffectcraftApp {
 
     // ---------------------------------------------------------------- frame
 
+    /// Apply the engine events drained this tick: open a comp, show a toast, open a URL, run a frontend command,
+    /// purge frame caches or copy an image; command and clipboard failures go to `app.ui.status`.
     fn handle_events(&mut self, ctx: &egui::Context) {
         for ev in self.session.drain_events() {
             match ev {
@@ -2389,6 +2402,10 @@ impl EffectcraftApp {
         panels::viewer_text::finish_logic(self, ctx);
     }
 
+    /// One UI pass after the IME begin hook: close on an applied GPU failure, run `ui_setup`, skip drawing until
+    /// fonts are ready, draw the frame, finish pointer wrapping, pump queued wasm frames, record input activity,
+    /// publish the completed pass's geometry and pass sequence, acknowledge applied synthetic input and answer
+    /// `AfterInput` replies only after a non-discarded pass. Requests repaints while frames are in flight.
     fn draw_inner(&mut self, ui: &mut egui::Ui, frame: &eframe::Frame) {
         let ctx = ui.ctx().clone();
         if self.gpu_failure_applied == Some(true) {
@@ -2706,6 +2723,9 @@ impl eframe::App for EffectcraftApp {
         }
     }
 
+    /// Feed pending synthetic input into `raw_input` only once fonts are ready (so a non-drawing pass never consumes
+    /// a batch), then prepare pointer wrapping; ending a numeric scrub clears the history merge key so the next edit
+    /// starts a new undo step.
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         raw_input.events.append(&mut self.forwarded.events);
         raw_input.dropped_files.append(&mut self.forwarded.files);
@@ -2722,6 +2742,8 @@ impl eframe::App for EffectcraftApp {
         }
     }
 
+    /// The logic-only tick: run `tick` and close the IME pass with `finish_ime_logic`. It does not read pass-time
+    /// input state (events, pointer and time are stale here), only the viewport information eframe refreshed.
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // Never `ctx.input(|i| i.time)` here: `Context::run_logic` leaves events, pointer state and
         // time at the previous full pass's values (only the viewport information is refreshed).
@@ -2729,6 +2751,7 @@ impl eframe::App for EffectcraftApp {
         self.finish_ime_logic(ctx);
     }
 
+    /// Draw one UI pass through `draw`.
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.draw(ui, frame);
     }

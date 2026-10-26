@@ -6,7 +6,7 @@
 //! inventing an id, and a missing row falls back to English instead of to an empty label.
 //!
 //! The language in force is set once per frame, from the same resolved language the fonts are
-//! installed for ([`super::language`], [`set_current`]), so a panel does not have to thread it
+//! installed for (`crate::i18n::language`, [`set_current`]), so a panel does not have to thread it
 //! through every function. It is thread-local: the render threads never draw interface text.
 //!
 //! A row that carries values keeps one `{}` per value and is read with [`tr_args`]; the tests below

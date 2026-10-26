@@ -234,7 +234,7 @@ fn uninstall(s: &mut Session, p: &Value) -> Result<Value> {
     if removed { Ok(json!({"removed": name})) } else { Err(bad(c, format!("`{name}` is not installed"))) }
 }
 
-/// Run an installed or bundled script by name (File ▸ Scripts ▸ <name>). A ScriptUI panel run
+/// Run an installed or bundled script by name (File ▸ Scripts ▸ `<name>`). A ScriptUI panel run
 /// this way gets `this` = a floating palette-like panel window.
 pub(crate) fn run_named(s: &mut Session, name: &str) -> Result<Value> {
     let (panel, code) = script_code(s, name, None).ok_or_else(|| bad("file.runScript", format!("no installed or bundled script `{name}`")))?;
@@ -308,7 +308,7 @@ fn restore_panels(s: &mut Session, _: &Value) -> Result<Value> {
     Ok(json!({"opened": opened, "failed": failed}))
 }
 
-/// Window ▸ <ScriptUI panel>: run the panel script (or bring its panel forward).
+/// Window ▸ `<ScriptUI panel>`: run the panel script (or bring its panel forward).
 fn open_panel(s: &mut Session, p: &Value) -> Result<Value> {
     let c = "window.scriptPanel";
     let name = str_p(p, "name").ok_or_else(|| bad(c, "missing `name` (a script in the ScriptUI Panels folder)"))?.to_string();

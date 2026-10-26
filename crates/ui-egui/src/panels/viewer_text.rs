@@ -40,9 +40,12 @@ enum Drag {
     Resize { layer: LayerId, handle: usize, start_box: [f64; 4] },
 }
 
+/// The `egui::Id` under which the in-progress text drag (selection, creation or box resize) is kept between frames.
 fn drag_id() -> egui::Id {
     egui::Id::unique("viewer-text-drag")
 }
+/// The `egui::Id` of the invisible focusable widget that owns keyboard and IME focus while on-canvas text editing is
+/// active.
 fn focus_id() -> egui::Id {
     egui::Id::unique("viewer-text-focus")
 }
@@ -97,6 +100,8 @@ enum ImeComposition {
 struct OutputContext(egui::Id, u64, egui::IMEPurpose);
 
 impl From<&egui::output::IMEOutput> for OutputContext {
+    /// Copy the owner, context generation and purpose out of egui's IME output so they can be cached and compared
+    /// cheaply.
     fn from(output: &egui::output::IMEOutput) -> Self {
         Self(output.owner, output.context_generation, output.purpose)
     }
@@ -111,33 +116,43 @@ struct ResetGuard {
     suspended: bool,
 }
 
+/// The `egui::Id` under which this viewport's `ResetGuard` is stored.
 fn reset_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("effectcraft.ime.reset", viewport))
 }
+/// The `egui::Id` holding whether this viewport is currently inside a full UI pass (set by the pass hooks).
 fn mode_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("effectcraft.ime.ui-pass", viewport))
 }
+/// The `egui::Id` holding the last committed IME mutation stamp accepted for this viewport.
 fn committed_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("effectcraft.ime.committed", viewport))
 }
+/// The `egui::Id` holding the frame number whose text-editor keyboard events were already consumed.
 fn input_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("effectcraft.ime.input-frame", viewport))
 }
+/// The `egui::Id` holding whether this viewport may request an IME reset in the current pass.
 fn admission_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("effectcraft.ime.can-request", viewport))
 }
 
+/// Allow or forbid IME reset requests for the current viewport's pass by storing `allowed` in context data.
 fn set_admission(ctx: &egui::Context, allowed: bool) {
     let id = admission_id(ctx.viewport_id());
     ctx.data_mut(|data| data.insert_temp(id, allowed));
 }
 
+/// Whether the window can receive input: focused, not minimized and not occluded. Unknown viewport flags count as
+/// available.
 fn window_available(ctx: &egui::Context) -> bool {
     ctx.input(|input| {
         input.focused && input.viewport().focused.unwrap_or(true) && input.viewport().minimized != Some(true) && input.viewport().occluded != Some(true)
     })
 }
 
+/// Install the per-pass IME hooks on `ctx` once: the begin hook marks a full UI pass and the end hook clears it.
+/// Later calls do nothing.
 pub(crate) fn install_hooks(ctx: &egui::Context) {
     let id = egui::Id::unique("effectcraft.ime.hooks-installed");
     let first = ctx.data_mut(|data| {
@@ -167,11 +182,15 @@ pub(crate) fn install_hooks(ctx: &egui::Context) {
     );
 }
 
+/// Read the current viewport's pending reset guard, if any.
 fn read_reset(ctx: &egui::Context) -> Option<ResetGuard> {
     let id = reset_id(ctx.viewport_id());
     ctx.data(|data| data.get_temp(id))
 }
 
+/// Record a reset for the current viewport: request a fresh IME fence when this pass is admitted, then store the
+/// destination selection, committed stamp and output identity and mark the composition stale. An unadmitted pass
+/// stores a suspended guard instead.
 fn request_reset_with_output(app: &EffectcraftApp, ctx: &egui::Context, output: Option<OutputContext>) {
     let viewport = ctx.viewport_id();
     let allowed = ctx.data(|data| data.get_temp::<bool>(admission_id(viewport)).unwrap_or(false));
@@ -183,11 +202,14 @@ fn request_reset_with_output(app: &EffectcraftApp, ctx: &egui::Context, output: 
     });
 }
 
+/// Re-request a reset for the current viewport, keeping the output identity published earlier in the pass.
 fn request_reset(app: &EffectcraftApp, ctx: &egui::Context) {
     let output = read_reset(ctx).and_then(|guard| guard.output);
     request_reset_with_output(app, ctx, output);
 }
 
+/// Re-request the reset when an unsuspended guard's destination selection or committed stamp no longer matches the
+/// app.
 fn sync_reset(app: &EffectcraftApp, ctx: &egui::Context) {
     if let Some(guard) = read_reset(ctx)
         && !guard.suspended
@@ -197,6 +219,7 @@ fn sync_reset(app: &EffectcraftApp, ctx: &egui::Context) {
     }
 }
 
+/// Retire the guard's request id locally and suspend it, so only a later eligible pass can request a new fence.
 fn suspend_reset(ctx: &egui::Context) {
     if let Some(mut guard) = read_reset(ctx) {
         guard.request = None;
@@ -206,6 +229,8 @@ fn suspend_reset(ctx: &egui::Context) {
     }
 }
 
+/// Accept `request` only when it is this viewport's current, unsuspended request and the destination and stamp still
+/// match; then sync target and selection, clear the composition and preview and remember the selection.
 fn complete_reset(app: &EffectcraftApp, ui: &egui::Ui, request: egui::ImeResetId) {
     if !read_reset(ui.ctx()).is_some_and(|guard| !guard.suspended && guard.request == Some(request)) {
         return;
@@ -228,6 +253,8 @@ fn complete_reset(app: &EffectcraftApp, ui: &egui::Ui, request: egui::ImeResetId
     }
 }
 
+/// Withhold custom IME controls for this pass: suspend the reset guard and drop every `ImeResetCompleted` event.
+/// No custom mutation route can be waiting for completion here; stock text widgets keep their keys and text events.
 fn unavailable_controls(ui: &egui::Ui) {
     suspend_reset(ui.ctx());
     // No custom mutation route runs here, so controls can only be obsolete. Stock text/keys
@@ -235,6 +262,7 @@ fn unavailable_controls(ui: &egui::Ui) {
     ui.ctx().input_mut(|input| input.events.retain(|event| !matches!(event, egui::Event::ImeResetCompleted { .. })));
 }
 
+/// Start a UI pass: revoke IME reset admission and clear the geometry published by the previous pass.
 pub(crate) fn begin_ui(ctx: &egui::Context) {
     set_admission(ctx, false);
     let id = ime_geometry_id(ctx.viewport_id());
@@ -248,6 +276,8 @@ pub(crate) fn ime_recorded(ctx: &egui::Context) -> bool {
     ctx.data(|d| d.get_temp::<ImeGeometry>(ime_geometry_id(viewport))).is_some_and(|(p, _, _)| p == pass)
 }
 
+/// Close a logic-only tick: when no full UI pass ran, revoke admission and resync and suspend the reset guard so a
+/// hidden tick never publishes IME state.
 pub(crate) fn finish_logic(app: &EffectcraftApp, ctx: &egui::Context) {
     let id = mode_id(ctx.viewport_id());
     if !ctx.data(|data| data.get_temp::<bool>(id).unwrap_or(false)) {
@@ -266,30 +296,40 @@ struct SurroundingCache {
     value: Option<ImeSurrounding>,
 }
 
+/// The `egui::Id` under which this viewport's visible IME pre-edit preview is stored.
 fn ime_preedit_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("viewer-text-preedit", viewport))
 }
+/// The `egui::Id` under which this viewport's in-flight IME composition state is stored.
 fn ime_composition_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("viewer-text-ime-composition", viewport))
 }
+/// The `egui::Id` under which the current pass number, text region and caret rectangle are stored for the
+/// viewport IME publisher.
 fn ime_geometry_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("viewer-text-ime-geometry", viewport))
 }
+/// The `egui::Id` under which the last text-edit target given keyboard focus is stored.
 fn ime_seen_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("viewer-text-seen", viewport))
 }
+/// The `egui::Id` under which the last `ImeOwner` observed by `sync_ime_target` is stored.
 fn ime_target_seen_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("viewer-text-ime-target", viewport))
 }
+/// The `egui::Id` under which the last accepted IME selection is stored.
 fn ime_selection_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("viewer-text-ime-selection", viewport))
 }
+/// The `egui::Id` under which the last published IME owner and context generation are stored.
 fn ime_last_context_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("viewer-text-ime-last-context", viewport))
 }
+/// The `egui::Id` under which the bounded IME surrounding-text snapshot and its cache key are stored.
 fn ime_surrounding_cache_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("viewer-text-ime-surrounding", viewport))
 }
+/// The `egui::Id` under which the typing merge counter is stored.
 fn typing_key_id(viewport: egui::ViewportId) -> egui::Id {
     egui::Id::unique(("viewer-text-typing", viewport))
 }
@@ -306,6 +346,8 @@ fn ime_target(app: &EffectcraftApp) -> Option<egui::ImeTarget> {
     Some(egui::ImeTarget::new(egui::Id::unique(("effectcraft-ime-text", comp.0, edit.layer.0)), edit.session))
 }
 
+/// The layer and edit-session token of the active text edit, or `None` when no editor is open. Caret, selection and
+/// text are deliberately excluded.
 fn ime_owner(app: &EffectcraftApp) -> Option<ImeOwner> {
     let edit = app.session.state.text_edit.as_ref()?;
     Some(ImeOwner { layer: edit.layer, session: edit.session })
@@ -338,6 +380,9 @@ fn ime_surrounding_cached(app: &EffectcraftApp, ctx: &egui::Context) -> Option<I
     value
 }
 
+/// The committed-text stamp an IME receipt compares against: the bounded snapshot when it is available, else the
+/// editor revision marked unavailable. It deliberately does not use the global project revision, so an unrelated edit
+/// leaves a wide selection's stamp unchanged.
 fn ime_stamp(app: &EffectcraftApp, ctx: &egui::Context) -> egui::ImeMutationStamp {
     match ime_surrounding_cached(app, ctx) {
         Some(w) => egui::ImeMutationStamp::from_committed(&w.text, w.cursor, w.anchor, None),
@@ -379,16 +424,19 @@ fn note_ime_application_change(app: &mut EffectcraftApp, ctx: &egui::Context) {
     app.ime_tracker.note_application_change(viewport, frame, target);
 }
 
+/// Drop this viewport's visible pre-edit preview.
 fn clear_preedit(ui: &egui::Ui) {
     let viewport = ui.ctx().viewport_id();
     ui.data_mut(|d| d.remove::<Preedit>(ime_preedit_id(viewport)));
 }
 
+/// Read this viewport's in-flight IME composition state.
 fn read_ime_composition(ui: &egui::Ui) -> Option<ImeComposition> {
     let viewport = ui.ctx().viewport_id();
     ui.data(|d| d.get_temp::<ImeComposition>(ime_composition_id(viewport)))
 }
 
+/// Store this viewport's composition state, or remove it with `None`.
 fn set_ime_composition(ui: &egui::Ui, composition: Option<ImeComposition>) {
     let viewport = ui.ctx().viewport_id();
     ui.data_mut(|d| match composition {
@@ -434,6 +482,7 @@ fn sync_ime_target(ui: &egui::Ui, app: &EffectcraftApp) {
     ui.data_mut(|d| d.insert_temp(ime_target_seen_id(viewport), current));
 }
 
+/// The active text edit's owner, anchor and caret, or `None` when no editor is open.
 fn ime_selection(app: &EffectcraftApp) -> Option<ImeSelection> {
     let edit = app.session.state.text_edit.as_ref()?;
     Some(ImeSelection { owner: ime_owner(app)?, anchor: edit.anchor, caret: edit.caret })
@@ -465,6 +514,7 @@ fn sync_ime_selection(ui: &egui::Ui, app: &EffectcraftApp) {
     remember_ime_selection(ui, app);
 }
 
+/// Truncate a pre-edit preview to `MAX_IME_TEXT_BYTES` on a character boundary, so no character is split.
 fn bounded_preedit(mut text: String) -> String {
     if text.len() > MAX_IME_TEXT_BYTES {
         let mut end = MAX_IME_TEXT_BYTES;
@@ -476,6 +526,7 @@ fn bounded_preedit(mut text: String) -> String {
     text
 }
 
+/// Read this viewport's visible pre-edit preview, whatever owner it belongs to.
 fn read_preedit(ui: &egui::Ui) -> Option<Preedit> {
     let viewport = ui.ctx().viewport_id();
     ui.data(|d| d.get_temp::<Preedit>(ime_preedit_id(viewport)))
@@ -502,17 +553,19 @@ fn ime_event_is_stale(ui: &egui::Ui, owner: ImeOwner) -> bool {
     }
 }
 
+/// The pre-edit text to draw, only when it belongs to the current edit owner and is non-empty.
 fn visible_preedit(ui: &egui::Ui, app: &EffectcraftApp) -> Option<String> {
     let owner = ime_owner(app)?;
     let p = read_preedit(ui)?;
     (p.owner == owner && !p.text.is_empty()).then_some(p.text)
 }
 
-/// Publish the settled descriptor for one completed viewport pass.
+/// Publish the descriptor from this viewport's current text state and recorded geometry.
 ///
-/// This runs at the very end of a root pass (after dock actions, ScriptUI, learn and dialogs)
-/// and at the end of each panel-window pass after that window's actions. The overlay only
-/// records geometry; it never publishes early with a snapshot that a later action can replace.
+/// The root viewport publishes after dock actions, ScriptUI, learn and dialogs. Native panel
+/// windows publish after the IME-owning body records geometry and again after their last body;
+/// publication can therefore precede later bodies in that window. The overlay only records
+/// geometry; this function resolves the current owner and availability when it publishes.
 pub(crate) fn finish_ime(app: &mut EffectcraftApp, ui: &egui::Ui) {
     let ctx = ui.ctx();
     let viewport = ctx.viewport_id();
@@ -1305,6 +1358,9 @@ fn ime_delete(app: &mut EffectcraftApp, ui: &egui::Ui, before: usize, after: usi
     exec(app, "text.deleteSurrounding", json!({"before": before, "after": after, "bytes": bytes, "merge": k})).is_some()
 }
 
+/// Paint the paragraph box and handles, selection, caret or pre-edit for `e`; register the editor's and box handles'
+/// automation regions; request the caret-blink repaint; and record the pass's text and caret rectangles for the IME
+/// finalizer.
 fn draw(app: &mut EffectcraftApp, ui: &mut egui::Ui, painter: &egui::Painter, map: &ViewerMap, e: &Edited, sel: std::ops::Range<usize>, caret: usize) {
     let t = app.tokens;
     let to_s = |p: Point| e.to_screen(map, (p.x, p.y));
@@ -1359,7 +1415,7 @@ fn draw(app: &mut EffectcraftApp, ui: &mut egui::Ui, painter: &egui::Painter, ma
     let rect = Rect::from_points(&quad);
     app.auto.add("viewer.textEdit", rect, &format!("Editing {}", e.layer.name));
     let cursor_rect = Rect::from_two_pos(sa, sb).expand2(vec2(1.0, 0.0));
-    // The outgoing IME descriptor is published by the pass-end finalizer, with this actual
+    // The viewport IME publisher uses this actual
     // caret geometry and the edited layer's committed `TextDoc` (never the bidi or pre-edit
     // display text). An available-empty document stays distinct from unavailable.
     let viewport = ui.ctx().viewport_id();

@@ -163,6 +163,8 @@ const WHIP_PARENT: u8 = 0;
 const WHIP_EXPR: u8 = 1;
 const WHIP_PROP: u8 = 2;
 
+/// The `egui::Id` under which a pick-whip drag in progress ([`PickWhip`]) is kept during the
+/// drag.
 fn pick_whip_id() -> egui::Id {
     egui::Id::unique("tl-pickwhip")
 }
@@ -194,6 +196,8 @@ fn pick_whip(
 /// (row, layer, prop uid, its value fields per dimension), and the pass they were shown in.
 type WhipTargets = (u64, Vec<(Rect, u64, u64, Vec<Rect>)>);
 
+/// The `egui::Id` of the drop targets other panels register for a pick-whip drag
+/// ([`whip_target`]); [`show`] clears it when the whip is released or dropped.
 fn whip_targets_id() -> egui::Id {
     egui::Id::unique("tl-pickwhip-targets")
 }
@@ -263,6 +267,8 @@ fn centered_on(span: f64, duration: f64, cti: f64) -> f64 {
 /// it (characters): the pick whip's reference goes in there.
 type WhipInto = (String, [usize; 2]);
 
+/// The `egui::Id` under which the expression text captured by an expression pick whip
+/// ([`WhipInto`]) is held for property `prop` until that editor is drawn again.
 fn whip_into_id(prop: u64) -> egui::Id {
     egui::Id::unique(("tl-pickwhip-into", prop))
 }
@@ -279,6 +285,8 @@ struct ExprFocus {
     pass: u64,
 }
 
+/// The `egui::Id` of the pending [`ExprFocus`]: which expression editor takes the keyboard on
+/// its next draw, and what to select in it.
 fn expr_focus_id() -> egui::Id {
     egui::Id::unique("tl-expr-focus")
 }
@@ -560,6 +568,8 @@ fn ruler_label(fno: i64, fps_i: i64, settings: &effectcraft_engine::project::Pro
     }
 }
 
+/// The `egui::Id` under which [`show`] records this frame's time mapping as `(x0, start, pps)`,
+/// i.e. the [`TMap`] fields it lays the ruler and graph out with.
 fn tl_map_id() -> egui::Id {
     egui::Id::unique("timeline-map")
 }
@@ -713,6 +723,8 @@ fn group_rename_id() -> egui::Id {
     egui::Id::unique("tl-group-rename")
 }
 
+/// The `egui::Id` of the one-shot flag that makes the open layer rename field take the keyboard
+/// on its first frame (see [`start_rename`]).
 fn rename_focus_id() -> egui::Id {
     egui::Id::unique("tl-rename-focus")
 }
@@ -1290,6 +1302,8 @@ struct KeyDrag {
     quick: Option<usize>,
 }
 
+/// The `egui::Id` of the keyframe drag in progress ([`KeyDrag`]): its start, the grabbed key's
+/// time and how far the selection has moved so far.
 fn key_drag_id() -> egui::Id {
     egui::Id::unique("tl-key-drag")
 }
@@ -1304,6 +1318,7 @@ struct QuickBar {
     applied: i64,
 }
 
+/// The `egui::Id` of a Quick Offset drag of layer bars in progress ([`QuickBar`]).
 fn quick_bar_id() -> egui::Id {
     egui::Id::unique("tl-quick-bar")
 }
@@ -1345,6 +1360,8 @@ struct SwitchDrag {
     merge: String,
 }
 
+/// The `egui::Id` of the switch press-and-drag in progress ([`SwitchDrag`]): the switch, the
+/// state the press gave it and the undo step the drag folds into.
 fn switch_drag_id() -> egui::Id {
     egui::Id::unique("tl-switch-drag")
 }
@@ -1438,6 +1455,8 @@ fn layer_switch(
     }
 }
 
+/// The `egui::Id` under which composition `comp` remembers the layer the last click selected, so
+/// a following Shift-click can select the range from there ([`shift_range`]).
 fn anchor_id(comp: ItemId) -> egui::Id {
     egui::Id::unique(("timeline-selection-anchor", comp.0))
 }
@@ -1471,6 +1490,8 @@ fn insertion(layer_rows: &[(Rect, LayerId)], py: f32, top: f32) -> (Option<usize
     (at, y)
 }
 
+/// The `egui::Id` of the flag the row drag's release sets, telling the same frame's reorder
+/// drawing code to apply the drop.
 fn layer_drop_id() -> egui::Id {
     egui::Id::unique("tl-layer-drop")
 }
@@ -1495,6 +1516,14 @@ fn replace_source_target(app: &EffectcraftApp, cid: ItemId, item: ItemId, lid: L
             .is_some_and(|l| !l.switches.locked && matches!(l.source, LayerSource::Footage { .. } | LayerSource::Comp { .. } | LayerSource::Solid { .. }))
 }
 
+/// The Timeline panel for the active composition inside `rect`: draws the header, ruler, work
+/// area and cache bars, the layer rows with their switch and value cells, the time graph and its
+/// keys, and the footer; and turns this frame's clicks, drags and drops into commands. Without an
+/// active comp it shows a hint, and dropping footage on it creates a composition. Most edits
+/// use [`crate::menus::invoke`]; time, switch and work-area gestures call `Session::execute`
+/// directly and ignore errors. Reported failures go to `app.ui.status`. UI state (scroll, zoom,
+/// open rows and the drags in progress) lives in
+/// `app.ui.timeline` and egui's temp data.
 pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let t = app.tokens;
     let ctx = ui.ctx().clone();

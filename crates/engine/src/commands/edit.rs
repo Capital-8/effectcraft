@@ -149,6 +149,16 @@ fn duplicate(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!(new.iter().map(|l| l.0).collect::<Vec<_>>()))
 }
 
+/// `edit.clear`: delegates to `text.delete` while editing text (deleting the selection or
+/// preceding character/word), then handles selected Time Remap (turning remapping off), keyframes, loose mask
+/// vertices, puppet pins, effects, masks/shape items/text animators/trackers, and finally the
+/// selected (or given) unlocked layers. Layer and selected-property-group paths return the number
+/// removed; text, Time Remap, keyframe, loose-vertex, puppet-pin and effect paths return their
+/// delegated command's result.
+///
+/// Layer removal also unparents surviving children in place, clears track mattes that pointed
+/// at a removed layer and rewrites layer-reference values and keys to `None` in the same undo
+/// step; the text-edit session is then sanitized so a removed layer's editor is not reused.
 fn delete(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(done) = delete_selection(s, p)? {
         return Ok(done);

@@ -3,7 +3,7 @@
 //! document's folder, and only local files, or files on the network share the document itself is
 //! on, are followed (see `craft_docpath`).
 //!
-//! Loading a document resolves its footage paths once ([`resolve_footage`]): followed paths are
+//! Loading a document resolves its footage paths once (`resolve_footage`): followed paths are
 //! replaced by the resolved path, and an item with a refused path is marked missing, so the media
 //! layer never reads it. The session then remembers which paths came from which document
 //! ([`StoredPaths`]); the footage check, the changed-on-disk scan, Reload Footage, Relink, Edit
