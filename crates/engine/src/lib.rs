@@ -1240,9 +1240,7 @@ fn upgrade_effect_group(
 ) {
     let effectcraft_project::GroupKind::Effect { effect } = &g.kind else { return };
     let Some(spec) = effectcraft_effects::find(effect.as_str()) else { return };
-    let composite = legacy_particles
-        && matches!(spec.id, "ec.sim.ccparticlesystems2" | "ec.sim.ccparticleworld")
-        && g.get("compositeWithOriginal").is_none();
+    let composite = legacy_particles && matches!(spec.id, "ec.sim.ccparticlesystems2" | "ec.sim.ccparticleworld") && g.get("compositeWithOriginal").is_none();
     effectcraft_effects::migrate::upgrade_instance(spec, g, &mut effectcraft_project::build::Ids(next), size);
     if composite && let Some(pr) = g.get_mut("compositeWithOriginal") {
         pr.value = effectcraft_keyframe::Value::Bool(true);
