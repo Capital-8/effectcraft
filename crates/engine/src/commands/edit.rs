@@ -2,7 +2,7 @@
 
 use effectcraft_color::Label;
 use effectcraft_keyframe::Value as KV;
-use effectcraft_project::{Comp, Expression, ItemKind, Layer, LayerId, LayerSource, TrackMatte};
+use effectcraft_project::{Comp, Expression, ItemId, ItemKind, Layer, LayerId, LayerSource, TrackMatte};
 use effectcraft_time::Tick;
 use serde_json::{Value, json};
 
@@ -150,45 +150,62 @@ fn duplicate(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn delete(s: &mut Session, p: &Value) -> Result<Value> {
-    if s.state.text_edit.is_some() && p.get("layers").is_none() {
-        return s.execute("text.delete", json!({}));
+    if let Some(done) = delete_selection(s, p)? {
+        return Ok(done);
+    }
+    let (cid, ids) = layers_p(s, p)?;
+    let ids = super::unlocked(s, cid, ids, "edit.clear")?;
+    clear_layers(s, cid, &ids)?;
+    // A removed layer may have been the edited one: end that session before another command
+    // can reuse it. Undo restores a layer as a new editor, never by reviving the old IME session.
+    s.sanitize_state();
+    Ok(json!(ids.len()))
+}
+
+/// Deletes the selected things that are not layers. `None` when the layers are deleted
+/// instead (nothing else is selected, or the command names its layers).
+fn delete_selection(s: &mut Session, p: &Value) -> Result<Option<Value>> {
+    let no_layers = p.get("layers").is_none();
+    if s.state.text_edit.is_some() && no_layers {
+        return Ok(Some(s.execute("text.delete", json!({}))?));
     }
     // Time Remap selected (its name, which selects all its keys) → time remapping off, not the
     // layer (After Effects).
-    if p.get("layers").is_none() {
+    if no_layers {
         let remapped = super::layer_time::selected_time_remap(s);
         if !remapped.is_empty() {
-            return super::layer_time::disable_time_remap(s, &remapped);
+            return Ok(Some(super::layer_time::disable_time_remap(s, &remapped)?));
         }
     }
     // Keyframes selected → delete keys; mask vertices → delete them; else layers.
-    if !s.state.selected_keys.is_empty() && p.get("layers").is_none() {
-        return s.execute("keys.delete", json!({}));
+    if !s.state.selected_keys.is_empty() && no_layers {
+        return Ok(Some(s.execute("keys.delete", json!({}))?));
     }
     // (Points selected with their mask, which selecting a mask does: the mask goes, below.)
     let comp = s.active_comp();
     let loose = s.state.selected_vertices.iter().any(|v| {
         !s.state.selected_props.contains(&(v.layer, v.mask)) && comp.and_then(|c| c.layer(v.layer)).is_some_and(|l| l.props.find_group(v.mask).is_some())
     });
-    if loose && p.get("layers").is_none() {
-        return s.execute("mask.deleteVertices", json!({}));
+    if loose && no_layers {
+        return Ok(Some(s.execute("mask.deleteVertices", json!({}))?));
     }
     // Puppet pins selected → delete the pins (not their layer).
-    if p.get("layers").is_none() && !super::puppet::selected_pins(s).is_empty() {
-        return s.execute("puppet.removePin", json!({}));
+    if no_layers && !super::puppet::selected_pins(s).is_empty() {
+        return Ok(Some(s.execute("puppet.removePin", json!({}))?));
     }
     // Effects selected → remove them.
-    if p.get("layers").is_none() && !super::effect::selected_effects(s).is_empty() {
-        return s.execute("effect.remove", json!({}));
+    if no_layers && !super::effect::selected_effects(s).is_empty() {
+        return Ok(Some(s.execute("effect.remove", json!({}))?));
     }
     // Masks, shape items, text animators or trackers selected → remove them.
-    if p.get("layers").is_none()
-        && let Some(n) = super::prop_groups::remove_selected(s)?
-    {
-        return Ok(n);
+    if no_layers && let Some(n) = super::prop_groups::remove_selected(s)? {
+        return Ok(Some(n));
     }
-    let (cid, ids) = layers_p(s, p)?;
-    let ids = super::unlocked(s, cid, ids, "edit.clear")?;
+    Ok(None)
+}
+
+/// Removes layers `ids` from comp `cid` in one undoable step, and clears what referred to them.
+fn clear_layers(s: &mut Session, cid: ItemId, ids: &[LayerId]) -> Result<()> {
     // Children of deleted layers are unparented where they are (like After Effects).
     let comp = s.project.comp(cid).ok_or(crate::EngineError::NoComp)?;
     let orphans: Vec<LayerId> = comp.layers.iter().filter(|l| !ids.contains(&l.id) && l.parent.is_some_and(|p| ids.contains(&p))).map(|l| l.id).collect();
@@ -226,11 +243,7 @@ fn delete(s: &mut Session, p: &Value) -> Result<Value> {
         st.selected_props.clear();
         st.selected_keys.clear();
         Ok(())
-    })?;
-    // A removed layer may have been the edited one: end that session before another command
-    // can reuse it. Undo restores a layer as a new editor, never by reviving the old IME session.
-    s.sanitize_state();
-    Ok(json!(ids.len()))
+    })
 }
 
 fn clear_clipboards(s: &mut Session) {

@@ -159,6 +159,14 @@ fn reload(s: &mut Session, ids: &[ItemId], undoable: bool) -> crate::Result<(usi
         }
     }
     let n = updates.len();
+    apply_reloads(s, updates, undoable)?;
+    forget(s, &paths);
+    Ok((n, failed))
+}
+
+/// Puts reloaded footage into the project: an undoable edit, or (not undoable) a disk change
+/// that leaves the project's dirty state as it was.
+fn apply_reloads(s: &mut Session, updates: Vec<(ItemId, Footage)>, undoable: bool) -> crate::Result<()> {
     if undoable {
         s.edit("Reload Footage", None, |proj, _| {
             for (i, f) in updates {
@@ -188,8 +196,7 @@ fn reload(s: &mut Session, ids: &[ItemId], undoable: bool) -> crate::Result<(usi
             }
         }
     }
-    forget(s, &paths);
-    Ok((n, failed))
+    Ok(())
 }
 
 /// Make the media layer and the layer cache let go of `paths`, so renders read them again.
