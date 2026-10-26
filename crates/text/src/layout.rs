@@ -725,7 +725,7 @@ impl<'a> Para<'a> {
     /// The byte ranges of the lines, for the wrap width.
     fn break_ranges(&self) -> Vec<Range<usize>> {
         if self.width.is_none() {
-            return vec![0..self.text.len()];
+            return std::iter::once(0..self.text.len()).collect();
         }
         let opps: Vec<usize> = unicode_linebreak::linebreaks(self.text).map(|(p, _)| p).collect();
         let mut ranges = if self.para.every_line && opps.len() > 1 && opps.len() <= 1500 { self.optimal_breaks(&opps) } else { self.greedy_breaks(opps) };
